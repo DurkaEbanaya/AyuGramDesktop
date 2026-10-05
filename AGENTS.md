@@ -2,7 +2,9 @@
 
 This guide defines repository-wide instructions for coding agents working with the Telegram Desktop codebase.
 
-Avoid building the project.
+Build the project when the user requests a build or a native package. Use the
+configured Debug build environment, verify the resulting artifact, and keep
+existing installed applications untouched until the new package is validated.
 
 If you're asked to create a Pull Request, then clearly state in PR description that it was AI generated.
 
