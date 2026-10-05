@@ -641,13 +641,6 @@ void Reply::updateName(
 		not_null<const Element*> view,
 		not_null<HistoryMessageReply*> data,
 		std::optional<PeerData*> resolvedSender) const {
-	if (_blockedPreview) {
-		_name.setMarkedText(
-			st::fwdTextStyle,
-			tr::marked(),
-			Ui::NameTextOptions());
-		return;
-	}
 	auto viaBotUsername = QString();
 	const auto message = data->resolvedMessage.get();
 	const auto forwarded = message
@@ -712,7 +705,7 @@ void Reply::updateName(
 	});
 	_name.setMarkedText(
 		st::fwdTextStyle,
-		nameFull,
+		_blockedPreview ? tr::marked() : nameFull,
 		Ui::NameTextOptions(),
 		context);
 	if (sender) {
