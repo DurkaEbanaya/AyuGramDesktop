@@ -27,6 +27,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_text_entity.h"
 #include "styles/style_dialogs.h"
 
+#include "ayu/features/filters/filters_controller.h"
+
 namespace {
 
 constexpr auto kEmojiLoopCount = 12;
@@ -145,6 +147,8 @@ bool MessageView::prepared(
 		Data::SavedMessages *monoforum) const {
 	return (_textCachedFor == item.get())
 		&& (_unreadMedia == item->isUnreadMedia())
+		&& (_blockedPlaceholder == FiltersController::blockedPlaceholder(
+			const_cast<HistoryItem*>(item.get())))
 		&& ((!forum && !monoforum)
 			|| (_topics
 				&& _topics->forum() == forum
@@ -177,9 +181,15 @@ void MessageView::prepare(
 		}
 	}
 	if (_textCachedFor == item.get()) {
-		_unreadMedia = item->isUnreadMedia();
-		return;
+		const auto blocked = FiltersController::blockedPlaceholder(
+			const_cast<HistoryItem*>(item.get()));
+		if (_blockedPlaceholder == blocked) {
+			_unreadMedia = item->isUnreadMedia();
+			return;
+		}
 	}
+	_blockedPlaceholder = FiltersController::blockedPlaceholder(
+		const_cast<HistoryItem*>(item.get()));
 	options.existing = &_imagesCache;
 	options.ignoreTopic = true;
 	options.spoilerLoginCode = true;
@@ -235,7 +245,8 @@ void MessageView::prepare(
 			}
 		}
 
-		if (minFrom == std::numeric_limits<uint16>::max()
+		if (!_blockedPlaceholder
+			&& minFrom == std::numeric_limits<uint16>::max()
 			&& !item->replyTo().quote.empty()) {
 			auto textQuote = TextWithEntities();
 			for (const auto &word : words) {

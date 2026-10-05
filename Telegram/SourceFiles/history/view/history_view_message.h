@@ -455,6 +455,7 @@ private:
 	int resizeContentGetHeight(int newWidth);
 	QSize performCountOptimalSize() override;
 	QSize performCountCurrentSize(int newWidth) override;
+	[[nodiscard]] bool blockedPlaceholderVisible() const;
 	bool hasVisibleText() const override;
 	[[nodiscard]] int visibleTextLength() const;
 	[[nodiscard]] int visibleMediaTextLength() const;
@@ -536,6 +537,8 @@ private:
 	mutable QPoint _linkRippleLastPoint;
 	mutable std::unique_ptr<CommentsButton> _comments;
 	mutable std::unique_ptr<TranscribeButton> _summarize;
+	mutable ClickHandlerPtr _blockedRevealLink;
+	bool _blockedRevealed = false;
 
 	mutable Ui::Text::String _fromName;
 	mutable std::unique_ptr<FromNameStatus> _fromNameStatus;

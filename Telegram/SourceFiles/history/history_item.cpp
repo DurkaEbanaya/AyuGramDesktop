@@ -4066,6 +4066,11 @@ bool HistoryItem::hasHiddenLinks() const {
 }
 
 TextForMimeData HistoryItem::clipboardText() const {
+	if (FiltersController::blockedPlaceholder(
+			const_cast<HistoryItem*>(this))) {
+		return TextForMimeData().append(
+			tr::ayu_BlockedPlaceholder(tr::now));
+	}
 	return isService()
 		? TextForMimeData()
 		: TextForMimeData::WithExpandedLinks(translatedText());
@@ -4907,6 +4912,10 @@ const HiddenSenderInfo *HistoryItem::savedFromHiddenSenderInfo() const {
 
 TextWithEntities HistoryItem::notificationText(
 		NotificationTextOptions options) const {
+	if (FiltersController::blockedPlaceholder(
+			const_cast<HistoryItem*>(this))) {
+		return tr::ayu_BlockedPlaceholder(tr::now, tr::marked);
+	}
 	auto result = [&] {
 		if (_media && !isService()) {
 			return _media->notificationText();
@@ -4931,6 +4940,10 @@ TextWithEntities HistoryItem::notificationText(
 }
 
 ItemPreview HistoryItem::toPreview(ToPreviewOptions options) const {
+	if (FiltersController::blockedPlaceholder(
+			const_cast<HistoryItem*>(this))) {
+		return { .text = tr::ayu_BlockedPlaceholder(tr::now, tr::marked) };
+	}
 	if (FiltersController::filtered(const_cast<HistoryItem*>(this))) {
 		return {};
 	}

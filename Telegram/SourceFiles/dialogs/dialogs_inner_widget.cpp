@@ -103,6 +103,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <unordered_map>
 
 // AyuGram includes
+#include "ayu/features/filters/filters_cache_controller.h"
 #include "ayu/ui/ayu_userpic.h"
 #include "ayu/utils/telegram_helpers.h"
 #include "styles/style_ayu_icons.h"
@@ -481,6 +482,17 @@ InnerWidget::InnerWidget(
 	session().settings().archiveInMainMenuChanges(
 	) | rpl::on_next([=] {
 		refresh();
+	}, lifetime());
+	rpl::merge(
+		session().changes().peerUpdates(
+			Data::PeerUpdate::Flag::IsBlocked) | rpl::to_empty,
+		FiltersCacheController::updates()
+	) | rpl::on_next([=] {
+		crl::on_main(this, [=] {
+			_rowsScrollCache.clear();
+			_cachedRows.clear();
+			update();
+		});
 	}, lifetime());
 
 	session().changes().historyUpdates(

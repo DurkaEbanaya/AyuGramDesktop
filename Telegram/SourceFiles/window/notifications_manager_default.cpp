@@ -48,6 +48,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "ayu/ayu_settings.h"
+#include "ayu/features/filters/filters_controller.h"
 #include "ayu/features/streamer_mode/streamer_mode.h"
 #include "ayu/utils/telegram_helpers.h"
 
@@ -104,7 +105,9 @@ Manager::QueuedNotification::QueuedNotification(NotificationFields &&fields)
 , topicRootId(fields.item->topicRootId())
 , peer(history->peer)
 , reaction(fields.reactionId)
-, author(!fields.reactionFrom
+, author(FiltersController::blockedPlaceholder(fields.item)
+	? QString()
+	: !fields.reactionFrom
 	? fields.item->notificationHeader()
 	: (fields.reactionFrom != peer)
 	? fields.reactionFrom->name()
@@ -962,7 +965,10 @@ void Notification::updateNotifyDisplay() {
 				st::notifyItemTop + st::semiboldFont->height,
 				itemWidth,
 				2 * st::dialogsTextFont->height);
-			const auto text = !_reaction.empty()
+			const auto text = (_item
+				&& FiltersController::blockedPlaceholder(_item))
+				? tr::ayu_BlockedPlaceholder(tr::now, tr::marked)
+				: !_reaction.empty()
 				? (!_author.isEmpty()
 					? Ui::Text::Colorized(_author).append(' ')
 					: TextWithEntities()

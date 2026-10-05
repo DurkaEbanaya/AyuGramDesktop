@@ -8961,7 +8961,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "ayu_FiltersShadowBan" = "Shadow Ban";
 "ayu_RegexFiltersExcluded" = "Excluded Filters";
 "ayu_RegexFiltersEnable" = "Enable Filters";
-"ayu_FiltersHideFromBlocked" = "Hide from Blocked Users";
+"ayu_FiltersHideFromBlocked" = "Hide blocked users' messages in groups";
+"ayu_BlockedPlaceholder" = "Заблокированный пользователь насрал здесь";
+"ayu_BlockedReveal" = "Показать сообщение";
 "ayu_FiltersHideFromBlockedNote" = "Message filters were enabled.";
 "ayu_RegexFiltersEnableSharedInChats" = "Enable Shared Filters in Chats";
 "ayu_RegexFiltersAdd" = "Add Filter";

@@ -41,6 +41,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "ayu/ayu_settings.h"
+#include "ayu/features/filters/filters_controller.h"
 
 
 namespace HistoryView {
@@ -392,14 +393,18 @@ void Reply::update(
 			_externalSender = view->history()->owner().peer(id);
 		}
 	}
-	_colorPeer = message
+	const auto blockedReply = FiltersController::blockedReply(item, data);
+	_blockedPreview = blockedReply;
+	_colorPeer = blockedReply
+		? nullptr
+		: message
 		? message->contentColorsFrom()
 		: story
 		? story->peer().get()
 		: _externalSender
 		? _externalSender
 		: nullptr;
-	_hiddenSenderColorIndexPlusOne = (!_colorPeer && message)
+	_hiddenSenderColorIndexPlusOne = (!blockedReply && !_colorPeer && message)
 		? (message->originalHiddenSenderInfo()->colorIndex + 1)
 		: 0;
 	const auto pollMediaPtr = pollAnswer
@@ -407,17 +412,17 @@ void Reply::update(
 		: (messagePoll && fields.pollOption.isEmpty())
 		? &messagePoll->attachedMedia
 		: nullptr;
-	const auto hasPreview = (story && story->hasReplyPreview())
+	const auto hasPreview = !blockedReply && ((story && story->hasReplyPreview())
 		|| (message
 			&& message->media()
 			&& message->media()->hasReplyPreview())
 		|| (externalMedia && externalMedia->hasReplyPreview())
 		|| (pollMediaPtr
-			&& (pollMediaPtr->photo || pollMediaPtr->document));
+			&& (pollMediaPtr->photo || pollMediaPtr->document)));
 	_hasPreview = hasPreview ? 1 : 0;
 	_displaying = data->displaying() ? 1 : 0;
 	_multiline = data->multiline() ? 1 : 0;
-	const auto hasQuoteIcon = _displaying
+	const auto hasQuoteIcon = !blockedReply && _displaying
 		&& fields.manualQuote
 		&& !fields.quote.empty();
 	_hasQuoteIcon = hasQuoteIcon ? 1 : 0;
@@ -427,7 +432,9 @@ void Reply::update(
 		.session = &view->history()->session(),
 		.repaint = repaint,
 	}));
-	const auto text = (!_displaying && data->unavailable())
+	const auto text = blockedReply
+		? tr::ayu_BlockedPlaceholder(tr::now, tr::marked)
+		: (!_displaying && data->unavailable())
 		? TextWithEntities()
 		: task
 		? Ui::Text::Colorized(task->completionDate
@@ -476,7 +483,8 @@ void Reply::update(
 
 	if (_displaying) {
 		setLinkFrom(view, data);
-		const auto media = message ? message->media() : nullptr;
+		const auto media = blockedReply ? nullptr
+			: message ? message->media() : nullptr;
 		if (!media
 			|| !media->hasReplyPreview()
 			|| !media->hasSpoilerForPreview()) {
@@ -617,6 +625,9 @@ QString Reply::senderName(
 bool Reply::isNameUpdated(
 		not_null<const Element*> view,
 		not_null<HistoryMessageReply*> data) const {
+	if (_blockedPreview) {
+		return false;
+	}
 	if (const auto from = sender(view, data)) {
 		if (_nameVersion < from->nameVersion()) {
 			updateName(view, data, from);
@@ -630,6 +641,13 @@ void Reply::updateName(
 		not_null<const Element*> view,
 		not_null<HistoryMessageReply*> data,
 		std::optional<PeerData*> resolvedSender) const {
+	if (_blockedPreview) {
+		_name.setMarkedText(
+			st::fwdTextStyle,
+			tr::marked(),
+			Ui::NameTextOptions());
+		return;
+	}
 	auto viaBotUsername = QString();
 	const auto message = data->resolvedMessage.get();
 	const auto forwarded = message

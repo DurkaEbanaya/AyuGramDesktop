@@ -11,6 +11,7 @@
 #include "ayu/features/filters/filters_cache_controller.h"
 #include "ayu/features/filters/filters_utils.h"
 #include "ayu/utils/telegram_helpers.h"
+#include "data/data_groups.h"
 #include "data/data_peer.h"
 #include "data/data_peer_id.h"
 #include "data/data_session.h"
@@ -97,56 +98,97 @@ bool isEnabled(not_null<PeerData*> peer) {
 	return settings.filtersEnabled() && (settings.filtersEnabledInChats() || peer->isBroadcast());
 }
 
-bool isBlocked(const not_null<HistoryItem*> item) {
-	const auto &settings = AyuSettings::getInstance();
-
-	auto shadowBanMatched = false;
-	const auto blocked = [&]() -> bool
-	{
-		const auto isShadowBanned = [&](PeerData *peer) {
-			return peer
-				&& (peer->isUser() || peer->isBroadcast())
-				&& settings.isShadowBanned(getDialogIdFromPeer(peer));
-		};
-
-		if (isShadowBanned(item->from())
-			&& item->from()->id != item->history()->peer->id) {
-			shadowBanMatched = true;
+bool blockedPlaceholder(not_null<HistoryItem*> item) {
+	const auto peer = item->history()->peer;
+	if (!AyuSettings::getInstance().hideFromBlocked()
+		|| !(peer->isChat() || peer->isMegagroup() || peer->isGigagroup())) {
+		return false;
+	}
+	const auto blocked = [](PeerData *sender) {
+		const auto user = sender ? sender->asUser() : nullptr;
+		return user && user->isBlocked();
+	};
+	const auto containsBlocked = [&](not_null<HistoryItem*> message) {
+		if (blocked(message->from()) || blocked(message->viaBot())) {
 			return true;
 		}
-
-		if (item->from()->isUser()
-			&& item->from()->asUser()->isBlocked()) {
-			// don't hide messages if it's a dialog with blocked user
-			return item->from()->asUser()->id != item->history()->peer->id;
-		}
-
-		if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
-			if (const auto originalSender = forwarded->originalSender) {
-				const auto originalShadowBanned = isShadowBanned(originalSender);
-				if (originalShadowBanned
-					|| (originalSender->isUser()
-						&& originalSender->asUser()->isBlocked())) {
-					shadowBanMatched = originalShadowBanned;
-					return true;
-				}
+		if (const auto forwarded = message->Get<HistoryMessageForwarded>()) {
+			if (blocked(forwarded->originalSender)) {
+				return true;
 			}
 		}
 		return false;
-	}();
+	};
+	if (containsBlocked(item)) {
+		return true;
+	}
+	if (const auto group = item->history()->owner().groups().find(item)) {
+		for (const auto member : group->items) {
+			if (containsBlocked(member)) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
 
-	return settings.filtersEnabled()
-		&& (shadowBanMatched || settings.hideFromBlocked())
-		&& blocked;
+bool blockedReply(
+		not_null<HistoryItem*> item,
+		not_null<HistoryMessageReply*> reply) {
+	const auto peer = item->history()->peer;
+	if (!AyuSettings::getInstance().hideFromBlocked()
+		|| !(peer->isChat() || peer->isMegagroup() || peer->isGigagroup())) {
+		return false;
+	}
+	const auto blocked = [](PeerData *sender) {
+		const auto user = sender ? sender->asUser() : nullptr;
+		return user && user->isBlocked();
+	};
+	if (const auto id = reply->fields().externalSenderId) {
+		if (blocked(peer->owner().peerLoaded(id))) {
+			return true;
+		}
+	}
+	if (const auto message = reply->resolvedMessage.get()) {
+		if (blocked(message->from())
+			|| blocked(message->viaBot())
+			|| blocked(message->displayFrom())
+			|| blockedPlaceholder(message)) {
+			return true;
+		}
+		if (const auto forwarded = message->Get<HistoryMessageForwarded>()) {
+			return blocked(forwarded->originalSender);
+		}
+	}
+	return false;
+}
+
+bool isBlocked(const not_null<HistoryItem*> item) {
+	const auto &settings = AyuSettings::getInstance();
+	if (!settings.filtersEnabled()) {
+		return false;
+	}
+	const auto isShadowBanned = [&](PeerData *peer) {
+		return peer
+			&& (peer->isUser() || peer->isBroadcast())
+			&& settings.isShadowBanned(getDialogIdFromPeer(peer));
+	};
+	if (isShadowBanned(item->from())
+		&& item->from()->id != item->history()->peer->id) {
+		return true;
+	}
+	if (const auto forwarded = item->Get<HistoryMessageForwarded>()) {
+		return isShadowBanned(forwarded->originalSender);
+	}
+
+	return false;
 }
 
 bool isBlocked(const not_null<PeerData*> peer) {
 	const auto &settings = AyuSettings::getInstance();
-	return settings.filtersEnabled() &&
-	(
-		(peer->isUser() && peer->asUser()->isBlocked() && settings.hideFromBlocked()) ||
-		((peer->isUser() || peer->isBroadcast()) && settings.isShadowBanned(getDialogIdFromPeer(peer)))
-	);
+	return settings.filtersEnabled()
+		&& (peer->isUser() || peer->isBroadcast())
+		&& settings.isShadowBanned(getDialogIdFromPeer(peer));
 }
 
 bool filtered(const not_null<HistoryItem*> item) {

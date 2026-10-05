@@ -554,6 +554,11 @@ Message::Message(
 , _bottomInfo(
 		&data->history()->owner().reactions(),
 		BottomInfoDataFromMessage(this)) {
+	if (const auto old = replacing
+			? dynamic_cast<Message*>(replacing)
+			: nullptr) {
+		_blockedRevealed = old->_blockedRevealed;
+	}
 	if (data->Get<HistoryMessageSuggestion>()) {
 		_hideReply = 1;
 	} else if (const auto media = data->media()) {
@@ -1345,6 +1350,17 @@ QRect Message::effectIconGeometry() const {
 }
 
 QSize Message::performCountOptimalSize() {
+	if (blockedPlaceholderVisible()) {
+		const auto textWidth = std::max(
+			st::msgServiceFont->width(tr::ayu_BlockedPlaceholder(tr::now)),
+			st::msgServiceFont->width(tr::ayu_BlockedReveal(tr::now)));
+		return { std::min(st::msgMaxWidth,
+			textWidth + st::msgServicePadding.left()
+				+ st::msgServicePadding.right()),
+			st::msgServiceFont->height * 2
+			+ st::msgServicePadding.top()
+			+ st::msgServicePadding.bottom() };
+	}
 	const auto item = data();
 
 	const auto replyData = item->Get<HistoryMessageReply>();
@@ -1706,6 +1722,9 @@ void Message::refreshTopicButton() {
 }
 
 int Message::marginTop() const {
+	if (blockedPlaceholderVisible()) {
+		return st::msgServiceMargin.top();
+	}
 	auto result = 0;
 	if (!isHidden()) {
 		if (isAttachedToPrevious()) {
@@ -1735,6 +1754,9 @@ int Message::marginTop() const {
 }
 
 int Message::marginBottom() const {
+	if (blockedPlaceholderVisible()) {
+		return st::msgServiceMargin.bottom();
+	}
 	if (isHidden()) {
 		return 0;
 	}
@@ -1751,6 +1773,38 @@ int Message::marginBottom() const {
 }
 
 void Message::draw(Painter &p, const PaintContext &context) const {
+	if (blockedPlaceholderVisible()) {
+		const auto rect = QRect(
+			st::msgServiceMargin.left(),
+			marginTop(),
+			std::min(width() - st::msgServiceMargin.left()
+				- st::msgServiceMargin.right(), st::msgMaxWidth),
+			height() - marginTop() - marginBottom());
+		if (rect.width() <= 0) {
+			return;
+		}
+		p.setPen(Qt::NoPen);
+		p.setBrush(context.st->msgServiceBg());
+		p.drawRoundedRect(rect, st::msgServicePadding.left(),
+			st::msgServicePadding.left());
+		p.setPen(context.st->msgServiceFg());
+		p.setFont(st::msgServiceFont);
+		const auto left = rect.left() + st::msgServicePadding.left();
+		const auto available = rect.width() - st::msgServicePadding.left()
+			- st::msgServicePadding.right();
+		if (available <= 0) {
+			return;
+		}
+		const auto title = tr::ayu_BlockedPlaceholder(tr::now);
+		const auto reveal = tr::ayu_BlockedReveal(tr::now);
+		p.drawText(left, rect.top() + st::msgServicePadding.top()
+			+ st::msgServiceFont->ascent,
+			st::msgServiceFont->elided(title, available));
+		p.drawText(left, rect.top() + st::msgServicePadding.top()
+			+ st::msgServiceFont->height + st::msgServiceFont->ascent,
+			st::msgServiceFont->elided(reveal, available));
+		return;
+	}
 	auto g = countGeometry();
 	if (g.width() < 1) {
 		return;
@@ -3321,6 +3375,12 @@ void Message::paintRichText(
 }
 
 PointState Message::pointState(QPoint point) const {
+	if (blockedPlaceholderVisible()) {
+		return (point.y() >= marginTop()
+			&& point.y() < height() - marginBottom())
+			? PointState::Inside
+			: PointState::Outside;
+	}
 	auto g = countGeometry();
 	if (g.width() < 1 || isHidden()) {
 		return PointState::Outside;
@@ -3412,6 +3472,9 @@ bool Message::displayFromPhoto() const {
 void Message::clickHandlerPressedChanged(
 		const ClickHandlerPtr &handler,
 		bool pressed) {
+	if (blockedPlaceholderVisible()) {
+		return;
+	}
 	const auto startLinkRipple = [&] {
 		if (!_linkRipple) {
 			if (!pressed) {
@@ -3987,6 +4050,39 @@ bool Message::hasFromPhoto() const {
 TextState Message::textState(
 		QPoint point,
 		StateRequest request) const {
+	if (blockedPlaceholderVisible()) {
+		auto result = TextState(data());
+		const auto left = st::msgServiceMargin.left()
+			+ st::msgServicePadding.left();
+		const auto available = std::min(width()
+			- st::msgServiceMargin.left()
+			- st::msgServiceMargin.right(), st::msgMaxWidth)
+			- st::msgServicePadding.left()
+			- st::msgServicePadding.right();
+		const auto reveal = tr::ayu_BlockedReveal(tr::now);
+		if (point.y() >= marginTop()
+			+ st::msgServicePadding.top()
+			+ st::msgServiceFont->height
+			&& point.y() < height() - marginBottom()
+			&& point.x() >= left
+			&& point.x() < left + std::min(
+				available,
+				st::msgServiceFont->width(reveal))) {
+			if (!_blockedRevealLink) {
+				_blockedRevealLink = std::make_shared<LambdaClickHandler>(
+					[weak = base::make_weak(const_cast<Message*>(this))](
+							ClickContext) {
+						if (const auto view = weak.get()) {
+							view->_blockedRevealed = true;
+							view->setPendingResize();
+							view->history()->owner().requestViewResize(view);
+						}
+					});
+			}
+			result.link = _blockedRevealLink;
+		}
+		return result;
+	}
 	_fromLinkRipplePointSet = 0;
 
 	const auto item = data();
@@ -4916,6 +5012,9 @@ bool Message::getStateText(
 
 // Forward to media.
 void Message::updatePressed(QPoint point) {
+	if (blockedPlaceholderVisible()) {
+		return;
+	}
 	if (const auto rich = richpage()) {
 		auto trect = QRect();
 		if (prepareRichPageTextRect(trect)) {
@@ -5027,6 +5126,9 @@ MessageSelection Message::selectionFromStates(
 		const TextState &anchor,
 		const TextState &current,
 		TextSelectType type) const {
+	if (blockedPlaceholderVisible()) {
+		return {};
+	}
 	if (anchor.selectionCursor.isRichPage()
 		|| current.selectionCursor.isRichPage()) {
 		if (!anchor.selectionCursor.valid()
@@ -5080,6 +5182,10 @@ MessageSelection Message::selectionFromStates(
 }
 
 TextForMimeData Message::selectedText(TextSelection selection) const {
+	if (blockedPlaceholderVisible()) {
+		return TextForMimeData().append(
+			tr::ayu_BlockedPlaceholder(tr::now));
+	}
 	const auto media = this->media();
 	auto logEntryOriginalResult = TextForMimeData();
 	auto factcheckResult = TextForMimeData();
@@ -5136,6 +5242,10 @@ TextForMimeData Message::selectedText(TextSelection selection) const {
 
 TextForMimeData Message::selectedText(
 		const MessageSelection &selection) const {
+	if (blockedPlaceholderVisible()) {
+		return TextForMimeData().append(
+			tr::ayu_BlockedPlaceholder(tr::now));
+	}
 	if (const auto flat = selection.flatSelection(); !flat.empty()) {
 		return selectedText(flat);
 	} else if (selection.isRichPage()) {
@@ -5149,6 +5259,9 @@ TextForMimeData Message::selectedText(
 }
 
 SelectedQuote Message::selectedQuote(TextSelection selection) const {
+	if (blockedPlaceholderVisible()) {
+		return {};
+	}
 	const auto textItem = this->textItem();
 	const auto item = textItem ? textItem : data().get();
 	const auto &translated = item->translatedText();
@@ -5175,6 +5288,9 @@ SelectedQuote Message::selectedQuote(TextSelection selection) const {
 
 SelectedQuote Message::selectedQuote(
 		const MessageSelection &selection) const {
+	if (blockedPlaceholderVisible()) {
+		return {};
+	}
 	if (const auto flat = selection.flatSelection(); !flat.empty()) {
 		return selectedQuote(flat);
 	}
@@ -5183,6 +5299,9 @@ SelectedQuote Message::selectedQuote(
 
 TextSelection Message::selectionFromQuote(
 		const SelectedQuote &quote) const {
+	if (blockedPlaceholderVisible()) {
+		return {};
+	}
 	Expects(quote.item != nullptr);
 
 	if (quote.highlight.quote.empty()) {
@@ -5353,6 +5472,9 @@ MessageSelection Message::adjustSelection(
 
 TextSelection Message::selectionForEdit(
 		const MessageSelection &selection) const {
+	if (blockedPlaceholderVisible()) {
+		return {};
+	}
 	return selection.isFlat()
 		? selection.flatRangeForEdit()
 		: TextSelection();
@@ -5361,6 +5483,9 @@ TextSelection Message::selectionForEdit(
 bool Message::selectionContains(
 		const MessageSelection &selection,
 		const TextState &state) const {
+	if (blockedPlaceholderVisible()) {
+		return false;
+	}
 	if (!selection.isRichPage()) {
 		return Element::selectionContains(selection, state);
 	}
@@ -5466,6 +5591,9 @@ void Message::drawInfo(
 		int bottom,
 		int width,
 		InfoDisplayType type) const {
+	if (blockedPlaceholderVisible()) {
+		return;
+	}
 	if (hidesBottomInfo()) {
 		return;
 	}
@@ -5521,6 +5649,9 @@ TextState Message::bottomInfoTextState(
 		int bottom,
 		QPoint point,
 		InfoDisplayType type) const {
+	if (blockedPlaceholderVisible()) {
+		return {};
+	}
 	if (hidesBottomInfo()) {
 		return {};
 	}
@@ -5823,6 +5954,9 @@ bool Message::toggleSelectionByHandlerClick(
 
 bool Message::allowTextSelectionByHandler(
 		const ClickHandlerPtr &handler) const {
+	if (blockedPlaceholderVisible()) {
+		return false;
+	}
 	if (const auto media = this->media()) {
 		if (media->allowTextSelectionByHandler(handler)) {
 			return true;
@@ -6667,6 +6801,11 @@ Ui::BubbleRounding Message::countBubbleRounding() const {
 }
 
 int Message::resizeContentGetHeight(int newWidth) {
+	if (blockedPlaceholderVisible()) {
+		return marginTop() + st::msgServicePadding.top()
+			+ 2 * st::msgServiceFont->height
+			+ st::msgServicePadding.bottom() + marginBottom();
+	}
 	if (isHidden()) {
 		return marginTop() + marginBottom();
 	} else if (newWidth < st::msgMinWidth) {
@@ -7225,7 +7364,9 @@ bool Message::usesMessageInfoLayout() const {
 }
 
 bool Message::needInfoDisplay() const {
-	return !hidesBottomInfo() && usesMessageInfoLayout();
+	return !blockedPlaceholderVisible()
+		&& !hidesBottomInfo()
+		&& usesMessageInfoLayout();
 }
 
 bool Message::invertMedia() const {
@@ -7233,6 +7374,9 @@ bool Message::invertMedia() const {
 }
 
 bool Message::hasVisibleText() const {
+	if (blockedPlaceholderVisible()) {
+		return false;
+	}
 	const auto textItem = this->textItem();
 	if (!textItem) {
 		return false;
@@ -7264,6 +7408,12 @@ QSize Message::performCountCurrentSize(int newWidth) {
 	const auto newHeight = resizeContentGetHeight(newWidth);
 
 	return { newWidth, newHeight };
+}
+
+bool Message::blockedPlaceholderVisible() const {
+	return !_blockedRevealed
+		&& !isHiddenByGroup()
+		&& FiltersController::blockedPlaceholder(data());
 }
 
 void Message::refreshInfoSkipBlock(HistoryItem *textItem) {

@@ -107,6 +107,7 @@ private:
 	mutable QRect _lastPaintGeometry;
 	mutable bool _hasPlainLinkAtBegin = false;
 	mutable bool _unreadMedia = false;
+	mutable bool _blockedPlaceholder = false;
 
 };
 

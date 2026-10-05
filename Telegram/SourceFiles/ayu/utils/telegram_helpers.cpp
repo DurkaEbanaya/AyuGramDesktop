@@ -299,7 +299,8 @@ bool isMessageHidden(const not_null<HistoryItem*> item) {
 		return true;
 	}
 
-	return FiltersController::filtered(item);
+	return !FiltersController::blockedPlaceholder(item)
+		&& FiltersController::filtered(item);
 }
 
 void MarkAsReadChatList(not_null<Dialogs::MainList*> list) {

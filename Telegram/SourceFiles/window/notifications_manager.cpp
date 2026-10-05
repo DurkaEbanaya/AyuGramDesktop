@@ -56,6 +56,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "ayu/ayu_settings.h"
+#include "ayu/features/filters/filters_controller.h"
 #include "ayu/utils/telegram_helpers.h"
 
 
@@ -1596,14 +1597,19 @@ void NativeManager::doShowNotification(NotificationFields &&fields) {
 	const auto hideReactionSender = reactionFrom
 		&& !peer->session().api().reactionsNotifySettings()
 			.showPreviewsCurrent();
-	const auto subtitle = reactionFrom
+	const auto blockedPlaceholder = FiltersController::blockedPlaceholder(item);
+	const auto subtitle = blockedPlaceholder
+		? QString()
+		: reactionFrom
 		? ((!hideReactionSender && reactionFrom != peer)
 			? reactionFrom->name()
 			: QString())
 		: options.hideNameAndPhoto
 		? QString()
 		: item->notificationHeader();
-	const auto text = pollVote
+	const auto text = blockedPlaceholder
+		? tr::ayu_BlockedPlaceholder(tr::now)
+		: pollVote
 		? TextWithPermanentSpoiler(ComposePollVoteNotification(
 			item,
 			fields.pollVoteOption,
@@ -1638,7 +1644,9 @@ void NativeManager::doShowNotification(NotificationFields &&fields) {
 		});
 	} : Fn<NotificationSound()>();
 	auto actions = std::vector<NotificationAction>();
-	if (AllowNotificationActions(peer) && !options.hideMarkAsRead) {
+	if (!blockedPlaceholder
+		&& AllowNotificationActions(peer)
+		&& !options.hideMarkAsRead) {
 		if (const auto markup = item->inlineReplyMarkup()) {
 			using ButtonType = HistoryMessageMarkupButton::Type;
 			const auto &rows = markup->data.rows;

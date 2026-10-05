@@ -29,6 +29,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 // AyuGram includes
 #include "api/api_transcribes.h"
+#include "ayu/features/filters/filters_controller.h"
 
 
 namespace {
@@ -298,11 +299,11 @@ QString ReplySenderNameForSelectedCopy(
 
 TextWithEntities ReplyPreviewTextForSelectedCopy(
 		not_null<HistoryMessageReply*> reply) {
+	const auto message = reply->resolvedMessage.get();
 	if (!reply->displaying() && reply->unavailable()) {
 		return TextWithEntities();
 	}
 	const auto &fields = reply->fields();
-	const auto message = reply->resolvedMessage.get();
 	const auto media = message ? message->media() : nullptr;
 	const auto messageMedia = (message
 			&& (fields.todoItemId || !fields.pollOption.isEmpty()))
@@ -387,18 +388,23 @@ std::optional<SelectedCopyReplyContext> ReplyContextForSelectedCopy(
 		return std::nullopt;
 	}
 	const auto replyPointer = not_null{ reply };
-	const auto senderName = ReplySenderNameForSelectedCopy(
+	const auto referencedBlocked = FiltersController::blockedReply(
 		item,
 		replyPointer);
-	if (senderName.isEmpty()) {
+	const auto senderName = referencedBlocked
+		? QString()
+		: ReplySenderNameForSelectedCopy(item, replyPointer);
+	if (senderName.isEmpty() && !referencedBlocked) {
 		return std::nullopt;
 	}
-	auto quote = (reply->manualQuote() && !fields.quote.empty())
+	auto quote = referencedBlocked
+		? tr::ayu_BlockedPlaceholder(tr::now, tr::marked)
+		: (reply->manualQuote() && !fields.quote.empty())
 		? TextUtilities::SingleLine(fields.quote)
 		: LimitNonExactReplyPreview(StripIconEmoji(
 			ReplyPreviewTextForSelectedCopy(replyPointer)));
 	return SelectedCopyReplyContext{
-		.senderName = senderName,
+		.senderName = referencedBlocked ? QString() : senderName,
 		.quote = TextForMimeData::WithExpandedLinks(quote),
 	};
 }
@@ -454,6 +460,9 @@ std::vector<not_null<Data::ForumTopic*>> TopicsForSelectedCopy(
 } // namespace
 
 TextForMimeData HistoryItemText(not_null<HistoryItem*> item) {
+	if (FiltersController::blockedPlaceholder(item)) {
+		return item->clipboardText();
+	}
 	auto summary = ShownSummaryText(item);
 	if (!summary.empty()) {
 		return summary;
@@ -470,6 +479,9 @@ Iv::RichPageBlocksSlice HistoryItemRichBlocks(not_null<HistoryItem*> item) {
 
 TextForMimeData HistoryGroupText(not_null<const Data::Group*> group) {
 	Expects(!group->items.empty());
+	if (FiltersController::blockedPlaceholder(group->items.front())) {
+		return group->items.front()->clipboardText();
+	}
 
 	const auto columnAlbum = [&] {
 		const auto item = group->items.front();
@@ -516,6 +528,9 @@ TextForMimeData HistoryGroupText(not_null<const Data::Group*> group) {
 namespace {
 
 TextForMimeData HistoryItemTextForSelectedCopy(not_null<HistoryItem*> item) {
+	if (FiltersController::blockedPlaceholder(item)) {
+		return item->clipboardText();
+	}
 	auto summary = ShownSummaryText(item);
 	if (!summary.empty()) {
 		return summary;
@@ -545,6 +560,9 @@ TextForMimeData HistoryItemTextForSelectedCopy(not_null<HistoryItem*> item) {
 TextForMimeData HistoryGroupTextForSelectedCopy(
 		not_null<const Data::Group*> group) {
 	Expects(!group->items.empty());
+	if (FiltersController::blockedPlaceholder(group->items.front())) {
+		return group->items.front()->clipboardText();
+	}
 
 	auto textResult = HistoryGroupText(group);
 	auto mediaResult = SelectedCopyAlbumLabel(CountSelectedCopyAlbumMedia(group));
