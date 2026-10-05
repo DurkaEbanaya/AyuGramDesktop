@@ -1722,9 +1722,6 @@ void Message::refreshTopicButton() {
 }
 
 int Message::marginTop() const {
-	if (blockedPlaceholderVisible()) {
-		return st::msgServiceMargin.top();
-	}
 	auto result = 0;
 	if (!isHidden()) {
 		if (isAttachedToPrevious()) {
@@ -1754,9 +1751,6 @@ int Message::marginTop() const {
 }
 
 int Message::marginBottom() const {
-	if (blockedPlaceholderVisible()) {
-		return st::msgServiceMargin.bottom();
-	}
 	if (isHidden()) {
 		return 0;
 	}
@@ -1774,12 +1768,7 @@ int Message::marginBottom() const {
 
 void Message::draw(Painter &p, const PaintContext &context) const {
 	if (blockedPlaceholderVisible()) {
-		const auto rect = QRect(
-			st::msgServiceMargin.left(),
-			marginTop(),
-			std::min(width() - st::msgServiceMargin.left()
-				- st::msgServiceMargin.right(), st::msgMaxWidth),
-			height() - marginTop() - marginBottom());
+		const auto rect = blockedPlaceholderRect();
 		if (rect.width() <= 0) {
 			return;
 		}
@@ -3376,8 +3365,7 @@ void Message::paintRichText(
 
 PointState Message::pointState(QPoint point) const {
 	if (blockedPlaceholderVisible()) {
-		return (point.y() >= marginTop()
-			&& point.y() < height() - marginBottom())
+		return blockedPlaceholderRect().contains(point)
 			? PointState::Inside
 			: PointState::Outside;
 	}
@@ -4052,18 +4040,17 @@ TextState Message::textState(
 		StateRequest request) const {
 	if (blockedPlaceholderVisible()) {
 		auto result = TextState(data());
-		const auto left = st::msgServiceMargin.left()
-			+ st::msgServicePadding.left();
-		const auto available = std::min(width()
-			- st::msgServiceMargin.left()
-			- st::msgServiceMargin.right(), st::msgMaxWidth)
+		const auto rect = blockedPlaceholderRect();
+		const auto left = rect.left() + st::msgServicePadding.left();
+		const auto available = rect.width()
 			- st::msgServicePadding.left()
 			- st::msgServicePadding.right();
 		const auto reveal = tr::ayu_BlockedReveal(tr::now);
-		if (point.y() >= marginTop()
+		if (point.y() >= rect.top()
 			+ st::msgServicePadding.top()
 			+ st::msgServiceFont->height
-			&& point.y() < height() - marginBottom()
+			&& point.y() < rect.bottom() + 1
+				- st::msgServicePadding.bottom()
 			&& point.x() >= left
 			&& point.x() < left + std::min(
 				available,
@@ -6755,6 +6742,22 @@ QRect Message::countGeometry() const {
 		contentTop,
 		contentWidth,
 		height() - contentTop - marginBottom());
+}
+
+QRect Message::blockedPlaceholderRect() const {
+	const auto left = st::msgMargin.left()
+		+ (hasFromPhoto() ? st::msgPhotoSkip : 0);
+	const auto available = std::max(
+		width() - left - st::msgMargin.right(),
+		0);
+	const auto contentWidth = std::min(available, st::msgMaxWidth);
+	return QRect(
+		hasRightLayout()
+			? width() - st::msgMargin.right() - contentWidth
+			: left,
+		marginTop(),
+		contentWidth,
+		height() - marginTop() - marginBottom());
 }
 
 Ui::BubbleRounding Message::countMessageRounding() const {

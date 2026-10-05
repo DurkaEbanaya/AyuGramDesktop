@@ -447,6 +447,7 @@ private:
 
 	void updateMediaInBubbleState();
 	QRect countGeometry() const;
+	[[nodiscard]] QRect blockedPlaceholderRect() const;
 	[[nodiscard]] Ui::BubbleRounding countMessageRounding() const;
 	[[nodiscard]] Ui::BubbleRounding countBubbleRounding(
 		Ui::BubbleRounding messageRounding) const;
